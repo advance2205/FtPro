@@ -7,7 +7,7 @@ from telegram.ext import (
 )
 
 TOKEN = "8754551838:AAE-8Du0lEB0e_rhou0F7Mo7dUZNcRgLsMw"
-CHANNEL = "@t.me/tg263e"
+CHANNEL = "tg263e"
 
 
 # ✅ Проверка подписки
