@@ -1,76 +1,108 @@
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    CallbackQueryHandler,
+    ContextTypes
+)
 
-import asyncio
-from aiogram import Bot, Dispatcher, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-import openai
+TOKEN = "8754551838:AAE-8Du0lEB0e_rhou0F7Mo7dUZNcRgLsMw"
+CHANNEL = "@t.me/tg263e"
 
-BOT_TOKEN = "8754551838:AAE-8Du0lEB0e_rhou0F7Mo7dUZNcRgLsMw"
-OPENAI_API_KEY = "YOUR_OPENAI_KEY"
 
-openai.api_key = OPENAI_API_KEY
+# ✅ Проверка подписки
+async def is_subscribed(user_id, bot):
+    member = await bot.get_chat_member(chat_id=CHANNEL, user_id=user_id)
+    return member.status in ["member", "administrator", "creator"]
 
-bot = Bot(token=BOT_TOKEN)
-dp = Dispatcher()
 
-def get_keyboard(topic):
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔄 Перегенерировать", callback_data=f"regen:{topic}")],
-        [InlineKeyboardButton(text="➕ Ещё карточка", callback_data=f"more:{topic}")]
-    ])
+# 🚀 Старт
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
 
-async def generate_prompt(topic: str):
-    prompt = f'''
-Создай идею визуальной обучающей карточки по теме: {topic}.
-Верни:
-Заголовок:
-Описание изображения:
-Короткий текст:
-'''
+    if not await is_subscribed(user_id, context.bot):
+        keyboard = [
+            [InlineKeyboardButton("📢 Подписаться", url=f"https://t.me/{CHANNEL[1:]}")],
+            [InlineKeyboardButton("✅ Проверить", callback_data="check_sub")]
+        ]
 
-    response = openai.ChatCompletion.create(
-        model="gpt-4o-mini",
-        messages=[{"role": "user", "content": prompt}]
+        await update.message.reply_text(
+            "❗ Подпишись на канал, чтобы пользоваться ботом",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    keyboard = [
+        [InlineKeyboardButton("🛍 Магазин", callback_data="shop")],
+        [InlineKeyboardButton("ℹ️ О нас", callback_data="about")]
+    ]
+
+    await update.message.reply_text(
+        "Добро пожаловать в магазин!",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-    return response['choices'][0]['message']['content']
 
-async def generate_image(prompt_text: str):
-    response = openai.Image.create(
-        prompt=prompt_text,
-        n=1,
-        size="1024x1024"
-    )
-    return response['data'][0]['url']
+# 🔘 Кнопки
+async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
 
-async def send_card(chat_id, topic):
-    await bot.send_message(chat_id, "🎨 Создаю карточку...")
+    user_id = query.from_user.id
 
-    prompt = await generate_prompt(topic)
-    image_url = await generate_image(prompt)
+    # Проверка подписки при каждом действии
+    if not await is_subscribed(user_id, context.bot):
+        await query.answer("Подпишись на канал ❗", show_alert=True)
+        return
 
-    await bot.send_photo(
-        chat_id,
-        photo=image_url,
-        caption=f"Тема: {topic}",
-        reply_markup=get_keyboard(topic)
-    )
+    if query.data == "shop":
+        keyboard = [
+            [InlineKeyboardButton("📱 Телефон", callback_data="phone")],
+            [InlineKeyboardButton("💻 Ноутбук", callback_data="laptop")],
+            [InlineKeyboardButton("🔙 Назад", callback_data="back")]
+        ]
+        await query.edit_message_text("Выбери товар:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-@dp.message()
-async def handle_message(message: types.Message):
-    topic = message.text
-    await send_card(message.chat.id, topic)
+    elif query.data == "phone":
+        await query.edit_message_text("📱 Телефон — 500$\nНапиши /buy_phone")
 
-@dp.callback_query()
-async def handle_callback(callback: types.CallbackQuery):
-    action, topic = callback.data.split(":")
+    elif query.data == "laptop":
+        await query.edit_message_text("💻 Ноутбук — 1000$\nНапиши /buy_laptop")
 
-    if action in ["regen", "more"]:
-        await send_card(callback.message.chat.id, topic)
+    elif query.data == "about":
+        await query.edit_message_text("Мы крутой магазин 😎")
 
-    await callback.answer()
+    elif query.data == "back":
+        await start(query, context)
 
-async def main():
-    await dp.start_polling(bot)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+# 🔄 Проверка подписки кнопкой
+async def check_sub(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = query.from_user.id
+
+    if await is_subscribed(user_id, context.bot):
+        await query.message.delete()
+        await start(update, context)
+    else:
+        await query.answer("Ты ещё не подписан ❌", show_alert=True)
+
+
+# 💰 Покупка
+async def buy_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Ты купил телефон 🎉")
+
+async def buy_laptop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Ты купил ноутбук 🎉")
+
+
+# ▶️ Запуск
+app = ApplicationBuilder().token(TOKEN).build()
+
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CommandHandler("buy_phone", buy_phone))
+app.add_handler(CommandHandler("buy_laptop", buy_laptop))
+app.add_handler(CallbackQueryHandler(buttons))
+app.add_handler(CallbackQueryHandler(check_sub, pattern="check_sub"))
+
+app.run_polling()
