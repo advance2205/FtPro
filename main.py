@@ -4,7 +4,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 import openai
 
-BOT_TOKEN = "YOUR_TELEGRAM_TOKEN"
+BOT_TOKEN = "8754551838:AAE-8Du0lEB0e_rhou0F7Mo7dUZNcRgLsMw"
 OPENAI_API_KEY = "YOUR_OPENAI_KEY"
 
 openai.api_key = OPENAI_API_KEY
