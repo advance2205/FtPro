@@ -2,72 +2,86 @@ import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.fsm.storage.memory import MemoryStorage
 
 TOKEN = "8754551838:AAE-8Du0lEB0e_rhou0F7Mo7dUZNcRgLsMw"
+CHANNEL_ID = "@tg263e"
 
 bot = Bot(token=TOKEN)
-dp = Dispatcher()
+dp = Dispatcher(storage=MemoryStorage())
 
-# --- Главное меню ---
+# -------- "БАЗА" --------
+users_db = {}
+# структура:
+# user_id: {"subscribed": bool, "bonus": bool, "balance": int}
+
+# -------- ПРОВЕРКА ПОДПИСКИ --------
+async def check_sub(user_id):
+    member = await bot.get_chat_member(CHANNEL_ID, user_id)
+    return member.status in ["member", "administrator", "creator"]
+
+# -------- КНОПКИ --------
+def sub_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📢 Подписаться", url=f"https://t.me/{CHANNEL_ID[1:]}")],
+        [InlineKeyboardButton(text="✅ Проверить", callback_data="check_sub")]
+    ])
+
 def main_menu():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📦 Товары", callback_data="products")],
-        [InlineKeyboardButton(text="⚙️ Настройки", callback_data="settings")]
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Баланс", callback_data="balance")]
     ])
-    return kb
 
-# --- Подменю товаров ---
-def products_menu():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📱 Телефоны", callback_data="phones")],
-        [InlineKeyboardButton(text="💻 Ноутбуки", callback_data="laptops")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]
-    ])
-    return kb
-
-# --- Подменю настроек ---
-def settings_menu():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔔 Уведомления", callback_data="notify")],
-        [InlineKeyboardButton(text="🌐 Язык", callback_data="lang")],
-        [InlineKeyboardButton(text="⬅️ Назад", callback_data="back_main")]
-    ])
-    return kb
-
-# --- Старт ---
+# -------- СТАРТ --------
 @dp.message(CommandStart())
 async def start(message: types.Message):
-    await message.answer("Главное меню:", reply_markup=main_menu())
+    user_id = message.from_user.id
 
-# --- Обработка кнопок ---
-@dp.callback_query()
-async def menu_handler(call: types.CallbackQuery):
+    if user_id not in users_db:
+        users_db[user_id] = {
+            "subscribed": False,
+            "bonus": False,
+            "balance": 0
+        }
 
-    # Главное меню
-    if call.data == "back_main":
-        await call.message.edit_text("Главное меню:", reply_markup=main_menu())
+    if not await check_sub(user_id):
+        await message.answer("Подпишись, чтобы получить бонус 🎁", reply_markup=sub_kb())
+        return
 
-    # Товары
-    elif call.data == "products":
-        await call.message.edit_text("Выбери категорию:", reply_markup=products_menu())
+    await message.answer("Добро пожаловать!", reply_markup=main_menu())
 
-    elif call.data == "phones":
-        await call.message.edit_text("📱 Вот список телефонов")
+# -------- ПРОВЕРКА --------
+@dp.callback_query(lambda c: c.data == "check_sub")
+async def check(call: types.CallbackQuery):
+    user_id = call.from_user.id
 
-    elif call.data == "laptops":
-        await call.message.edit_text("💻 Вот список ноутбуков")
+    if await check_sub(user_id):
+        user = users_db[user_id]
 
-    # Настройки
-    elif call.data == "settings":
-        await call.message.edit_text("Настройки:", reply_markup=settings_menu())
+        # если бонус ещё не выдавался
+        if not user["bonus"]:
+            user["bonus"] = True
+            user["balance"] += 100  # ← бонус
 
-    elif call.data == "notify":
-        await call.message.edit_text("🔔 Настройки уведомлений")
+            await call.message.edit_text(
+                "🎉 Ты получил 100 бонусов!\n\nТеперь можешь пользоваться ботом",
+                reply_markup=main_menu()
+            )
+        else:
+            await call.message.edit_text(
+                "✅ Ты уже получал бонус",
+                reply_markup=main_menu()
+            )
+    else:
+        await call.answer("Сначала подпишись ❌", show_alert=True)
 
-    elif call.data == "lang":
-        await call.message.edit_text("🌐 Выбор языка")
+# -------- БАЛАНС --------
+@dp.callback_query(lambda c: c.data == "balance")
+async def balance(call: types.CallbackQuery):
+    user = users_db[call.from_user.id]
+    await call.answer(f"Баланс: {user['balance']} 💰", show_alert=True)
 
-# --- Запуск ---
+# -------- ЗАПУСК --------
 async def main():
     await dp.start_polling(bot)
 
